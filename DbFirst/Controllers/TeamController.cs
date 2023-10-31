@@ -20,16 +20,30 @@ namespace DbFirst.Controllers
         }
 
         [HttpGet]
-        public async Task<ActionResult<List<Team>>> GetTeams()
+        [ResponseCache(Duration = 3600)]
+        public async Task<ActionResult<List<Team>>> GetTeams([FromQuery] int page = 1, [FromQuery] int pageSize = 10)
         {
-            return Ok(await _leagueDatabaseContext.Teams.ToListAsync());
+            try
+            {
+                var teams = await _leagueDatabaseContext.Teams.Skip((page - 1) * pageSize)
+                 .Take(pageSize).ToListAsync();
+                return Ok(teams);
+
+            }
+            catch (Exception)
+            {
+                return StatusCode(500, "Error to obtain the list of teams.");
+
+            }
         }
 
-        [HttpGet("ID")]
-        public ActionResult<Team> GetTeamByID([FromQuery] int IdTeam)
+        [HttpGet("IdTeam")]
+        [ProducesResponseType(200)]
+        [ProducesResponseType(404)]
+        public async Task<ActionResult<TeamDTO>> GetTeamByID([FromQuery] int IdTeam)
         {
-            var existingTeam = _leagueDatabaseContext.Teams.Where(c => c.Id == IdTeam);
-            if (!existingTeam.Any())
+            var existingTeam = await _leagueDatabaseContext.Teams.SingleOrDefaultAsync(c => c.Id == IdTeam);
+            if (existingTeam == null)
             {
                 return BadRequest(ModelState);
             }
@@ -38,6 +52,9 @@ namespace DbFirst.Controllers
         }
 
         [HttpPost("Create")]
+        [ProducesResponseType(200)]
+        [ProducesResponseType(204)]
+        [ProducesResponseType(422)]
         public async Task<ActionResult> CreateTeam([FromBody] TeamDTO team)
         {
             if (team == null)
@@ -51,7 +68,7 @@ namespace DbFirst.Controllers
 
             if (existingTeam != null)
             {
-                ModelState.AddModelError("", "El equipo ya existe");
+                ModelState.AddModelError("", "Team already exists");
                 return BadRequest(ModelState); 
             }
 
@@ -81,13 +98,15 @@ namespace DbFirst.Controllers
             _leagueDatabaseContext.Teams.Remove(existingTeam);
             await _leagueDatabaseContext.SaveChangesAsync();
 
-            return NoContent();
+            return Ok(new { message = "The team has been removed with success!" });
+
         }
 
         [HttpPut]
         [ProducesResponseType(204)]
         [ProducesResponseType(400)]
         [ProducesResponseType(404)]
+        [ProducesResponseType(500)]
         public async Task<ActionResult> UpdateTeam([FromQuery] int Id, [FromBody] TeamDTO team)
         {
             if (team == null)
@@ -95,19 +114,33 @@ namespace DbFirst.Controllers
                 return BadRequest(ModelState);
             }
 
-            var existingTeam = await _leagueDatabaseContext.Teams.FindAsync(Id);
-
-            if (existingTeam == null)
+            if (!ModelState.IsValid)
             {
-                return NotFound(); 
+                return BadRequest(ModelState);
             }
 
-            existingTeam.Name = team.Name;
+            try
+            {
+                var existingTeam = await _leagueDatabaseContext.Teams.FindAsync(Id);
 
-            _leagueDatabaseContext.Update(existingTeam);
-            await _leagueDatabaseContext.SaveChangesAsync();
+                if (existingTeam == null)
+                {
+                    return NotFound();
+                }
+                _iMapper.Map(team, existingTeam);
 
-            return NoContent();
+                _leagueDatabaseContext.Update(existingTeam);
+                await _leagueDatabaseContext.SaveChangesAsync();
+
+                return NoContent();
+
+            } catch (DbUpdateException ex)
+            {
+                return StatusCode(500, "Error al actualizar el equipo." + ex.Message);
+
+            }
+
+
         }
     }
 }
