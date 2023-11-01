@@ -1,5 +1,6 @@
 ﻿global using DbFirst.Models;
 using AutoMapper;
+using DbFirst.Interfaces;
 using DbFirst.Models.DTO;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -13,10 +14,10 @@ namespace DbFirst.Controllers
         private readonly LeagueDatabaseContext _leagueDatabaseContext;
         private readonly IMapper _iMapper;
 
-        public TeamController(LeagueDatabaseContext leagueDatabaseContext, IMapper iMapper)
+        public TeamController(LeagueDatabaseContext teamRepository, IMapper mapper)
         {
-            _leagueDatabaseContext = leagueDatabaseContext;
-            _iMapper = iMapper;
+            _leagueDatabaseContext = teamRepository;
+            _iMapper = mapper;
         }
 
         [HttpGet]
@@ -55,7 +56,7 @@ namespace DbFirst.Controllers
         [ProducesResponseType(200)]
         [ProducesResponseType(204)]
         [ProducesResponseType(422)]
-        public async Task<ActionResult> CreateTeam([FromBody] TeamDTO team)
+        public async Task<ActionResult<TeamDTO>> CreateTeam([FromBody] TeamDTO team)
         {
             if (team == null)
             {
@@ -69,7 +70,7 @@ namespace DbFirst.Controllers
             if (existingTeam != null)
             {
                 ModelState.AddModelError("", "Team already exists");
-                return BadRequest(ModelState); 
+                return BadRequest(ModelState);
             }
 
             var mappedTeam = _iMapper.Map<Team>(team);
@@ -85,7 +86,7 @@ namespace DbFirst.Controllers
         [ProducesResponseType(200)]
         [ProducesResponseType(204)]
         [ProducesResponseType(404)]
-        public async Task<ActionResult> DeleteTeam([FromQuery] int Id)
+        public async Task<ActionResult<TeamDTO>> DeleteTeam([FromQuery] int Id)
         {
             //FindAsync busca el atributo en la base de datos. Nombrar exactamente como se localiza en la base de datos
             var existingTeam = await _leagueDatabaseContext.Teams.FindAsync(Id);
@@ -94,7 +95,7 @@ namespace DbFirst.Controllers
             {
                 return NotFound();
             }
-                
+
             _leagueDatabaseContext.Teams.Remove(existingTeam);
             await _leagueDatabaseContext.SaveChangesAsync();
 
@@ -107,7 +108,7 @@ namespace DbFirst.Controllers
         [ProducesResponseType(400)]
         [ProducesResponseType(404)]
         [ProducesResponseType(500)]
-        public async Task<ActionResult> UpdateTeam([FromQuery] int Id, [FromBody] TeamDTO team)
+        public async Task<ActionResult<TeamDTO>> UpdateTeam([FromQuery] int Id, [FromBody] TeamDTO team)
         {
             if (team == null)
             {
@@ -130,17 +131,28 @@ namespace DbFirst.Controllers
                 _iMapper.Map(team, existingTeam);
 
                 _leagueDatabaseContext.Update(existingTeam);
-                await _leagueDatabaseContext.SaveChangesAsync();
+                
 
                 return NoContent();
 
-            } catch (DbUpdateException ex)
+            }
+            catch (DbUpdateException ex)
             {
                 return StatusCode(500, "Error al actualizar el equipo." + ex.Message);
 
             }
 
+        }
+        public async Task<ActionResult<TeamDTO>> TeamExists(int Id)
+        {
+            var existingTeam = await _leagueDatabaseContext.Teams.FindAsync(Id);
 
+            if (existingTeam == null)
+            {
+                return NotFound();
+            }
+
+            return Ok(existingTeam);
         }
     }
 }
